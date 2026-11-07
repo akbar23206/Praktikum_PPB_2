@@ -6,123 +6,123 @@ import '../services/api_services_product.dart';
 class ProductProvider extends ChangeNotifier {
   final ApiServiceProducts _api = ApiServiceProducts();
 
+  List<Product> _all = [];
   List<Product> _products = [];
-  List<String> _categoryList = [];
   bool _loading = false;
   String? _error;
-  int _total = 0;
-  int _skip = 0;
   String _selectedCategory = '';
+  String _query = '';
 
   List<Product> get product => _products;
-  List<String> get categoryList => _categoryList;
+  List<String> get categoryList =>
+      _all.map((p) => p.category ?? '').where((c) => c.isNotEmpty).toSet().toList()
+        ..sort();
   bool get loading => _loading;
-  int get total => _total;
-  int get skip => _skip; // Ditambahkan agar _skip bisa diakses jika diperlukan
+  int get total => _products.length;
+  int get skip => 0;
   String get selectedCategory => _selectedCategory;
   String? get error => _error;
+
+  void _apply() {
+    _products = _all.where((p) {
+      final okCat = _selectedCategory.isEmpty || p.category == _selectedCategory;
+      final okQ = _query.isEmpty ||
+          (p.title ?? '').toLowerCase().contains(_query.toLowerCase());
+      return okCat && okQ;
+    }).toList();
+  }
+
+  Future<void> _reload() async {
+    _all = await _api.getAllProducts();
+    _apply();
+  }
 
   Future<void> fetchProduct({int limit = 30, int skip = 0}) async {
     _loading = true;
     _error = null;
     _selectedCategory = '';
+    _query = '';
     notifyListeners();
-
     try {
-      final res = await _api.getAllProducts(limit: limit, skip: skip);
-      _products = res.product ?? [];
-      _total = res.total ?? 0;
-      _skip = res.skip ?? 0;
+      await _reload();
     } catch (e) {
       _error = e.toString();
     }
-
     _loading = false;
     notifyListeners();
   }
 
-  Future<void> fetchCategories() async {
-    try {
-      _categoryList = await _api.getCategoryList();
-      notifyListeners();
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
-    }
-  }
+  // Kategori diambil dari data produk, jadi tidak perlu request lagi
+  Future<void> fetchCategories() async {}
 
   Future<void> searchProducts(String query) async {
-    if (query.isEmpty) return fetchProduct();
-
-    _loading = true;
-    _error = null;
-    notifyListeners();
-
-    try {
-      final res = await _api.searchProducts(query);
-      _products = res.product ?? [];
-    } catch (e) {
-      _error = e.toString();
-    }
-
-    _loading = false;
+    _query = query;
+    _apply();
     notifyListeners();
   }
 
   Future<void> filterByCategory(String category) async {
     _selectedCategory = category;
-    _loading = true;
-    _error = null;
-    notifyListeners();
-
-    try {
-      final res = await _api.getProductsByCategory(category);
-      _products = res.product ?? [];
-    } catch (e) {
-      _error = e.toString();
-    }
-
-    _loading = false;
+    _apply();
     notifyListeners();
   }
 
   Future<void> sortProducts(String sortBy, String order) async {
-    _loading = true;
-    _error = null;
-    notifyListeners();
-
-    try {
-      final res = await _api.sortProducts(sortBy, order);
-      _products = res.product ?? [];
-    } catch (e) {
-      _error = e.toString();
-    }
-
-    _loading = false;
+    _products.sort((a, b) {
+      final int r = sortBy == 'price'
+          ? (a.price ?? 0).compareTo(b.price ?? 0)
+          : (a.title ?? '').compareTo(b.title ?? '');
+      return order == 'desc' ? -r : r;
+    });
     notifyListeners();
   }
 
-  Future<bool> updateProduct(int id, Product updated) async {
-    _loading = true;
-    _error = null;
-    notifyListeners();
+  // API hanya menerima 3 kolom: title, price, category
+  Map<String, dynamic> _simple(Product p) => {
+        'title': p.title,
+        'price': p.price,
+        'category': p.category,
+      };
 
-    bool success = false;
-
+  Future<bool> addProduct(Product p) async {
     try {
-      final result = await _api.updateProduct(id, updated.toJson());
-      int idx = _products.indexWhere((p) => p.id == id);
-      if (idx != -1) {
-        _products[idx] = result;
-      }
-      success = true; // Berhasil update
+      await _api.addProduct(_simple(p));
+      await _reload();
+      _error = null;
+      notifyListeners();
+      return true;
     } catch (e) {
       _error = e.toString();
-      success = false; // Gagal update
+      notifyListeners();
+      return false;
     }
+  }
 
-    _loading = false;
-    notifyListeners();
-    return success;
+  Future<bool> updateProduct(int id, Product updated) async {
+    try {
+      await _api.updateProduct(id, _simple(updated));
+      await _reload();
+      _error = null;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> deleteProduct(int id) async {
+    try {
+      await _api.deleteProduct(id);
+      await _reload();
+      _error = null;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      return false;
+    }
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 
 import '../providers/product_providers.dart';
 
@@ -20,6 +21,48 @@ class ProductDetailScreen extends StatelessWidget {
         backgroundColor: const Color(0xFFD6E2EC),
         foregroundColor: const Color(0xFF2C3E50),
         elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            tooltip: 'Edit produk',
+            onPressed: () => context.go('/edit/${product.id}', extra: product),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete),
+            tooltip: 'Hapus produk',
+            onPressed: () async {
+              final yakin = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Hapus produk?'),
+                  content: Text('"${product.title}" akan dihapus dari database.'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Batal'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Hapus'),
+                    ),
+                  ],
+                ),
+              );
+              if (yakin == true && context.mounted) {
+                final ok = await context
+                    .read<ProductProvider>()
+                    .deleteProduct(product.id as int);
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(ok ? 'Produk dihapus' : 'Gagal menghapus produk'),
+                  ),
+                );
+                if (ok) Navigator.pop(context);
+              }
+            },
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -188,6 +231,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F6F9),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.go('/add'),
+        tooltip: 'Tambah produk',
+        child: const Icon(Icons.add),
+      ),
       appBar: AppBar(
         elevation: 0,
         backgroundColor: const Color(0xFFD6E2EC),
